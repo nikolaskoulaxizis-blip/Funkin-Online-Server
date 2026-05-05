@@ -35,7 +35,7 @@ class ClientInfo {
 }
 
 export class GameRoom extends Room {
-    public static PROTOCOL_VERSION = 12;
+    public static PROTOCOL_VERSION = 11;
     /**
      * schema of the current room
      */
