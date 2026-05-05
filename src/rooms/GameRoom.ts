@@ -35,7 +35,7 @@ class ClientInfo {
 }
 
 export class GameRoom extends Room {
-    public static PROTOCOL_VERSION = 11;
+    public static PROTOCOL_VERSION = 12;
     /**
      * schema of the current room
      */
@@ -44,7 +44,7 @@ export class GameRoom extends Room {
      * the maximum amount of people that can join the room
      * this also counts spectators
      */
-    maxClients = 6; // more is supported but expected graphical errors
+    maxClients = 9; // supports e.g. 5v4; lobby camera may get crowded
     /**
      * a colyseus channel that holds all of the room ids 
      * this is so conflicts don't happen when creating a room with the same id
@@ -59,6 +59,10 @@ export class GameRoom extends Room {
      * secret hash of the current chart so the chart validation can't be faked
      */
     chartHash: string = null;
+    /**
+     * Each player's chosen song data; one entry is picked at random when the match starts.
+     */
+    songVotes = new Map<string, any[]>();
     /**
      * map that holds the private info of clients
      */
@@ -137,6 +141,26 @@ export class GameRoom extends Room {
             if (!requester)
                 return;
 
+            if (!this.state.isStarted && this.songVotes.size > 0) {
+                const picks = [...this.songVotes.values()];
+                const win = picks[Math.floor(Math.random() * picks.length)];
+                this.applySongFromMessage(win);
+                this.songVotes.clear();
+
+                for (const [_, player] of this.state.players) {
+                    player.isReady = false;
+                    player.hasSong = false;
+                }
+                for (const dummy of this.dummies) {
+                    dummy.isReady = false;
+                    dummy.hasSong = false;
+                }
+
+                this.broadcast("log", formatLog('Random song from picks: "' + this.state.song + '"'));
+                this.broadcast("checkChart", "", { afterNextPatch: true });
+                return;
+            }
+
             if (requester.hasSong) {
                 requester.isReady = !requester.isReady;
                 for (const dummy of this.dummies) {
@@ -206,30 +230,22 @@ export class GameRoom extends Room {
 
             if (this.checkInvalid(message, VerifyTypes.ARRAY, 6)) return;
 
-            if (this.hasPerms(client) || this.state.allPlayersChoose) {
-                this.state.folder = message[0];
-                this.state.song = message[1];
-                this.state.diff = message[2];
-                this.chartHash = message[3];
-                this.state.modDir = message[4];
-                this.state.modURL = message[5];
-                this.state.diffList = message[6];
+            const requester = this.getStatePlayer(client);
+            if (!requester)
+                return;
 
-                for (const [sid, player] of this.state.players) {
-                    player.isReady = false;
-                    player.hasSong = sid == client.sessionId;
-                }
+            this.songVotes.set(client.sessionId, message);
 
-                const requester = this.getStatePlayer(client);
-                if (!requester)
-                    return;
-
-                this.broadcast("log", formatLog(requester.name + ' has picked song: "' + this.state.song + '"'));
-                this.broadcast("checkChart", "", { afterNextPatch: true });
+            for (const [_, player] of this.state.players) {
+                player.isReady = false;
+                player.hasSong = false;
             }
-            else {
-                client.send('alert', 'You don\'t have a permission to do that.')
+            for (const dummy of this.dummies) {
+                dummy.isReady = false;
+                dummy.hasSong = false;
             }
+
+            this.broadcast("log", formatLog(requester.name + ' added song pick: "' + message[1] + '" (' + this.songVotes.size + ' in pool). Press START when ready to roll!'));
         });
 
         this.onMessage("setStage", (client, message) => {
@@ -237,25 +253,20 @@ export class GameRoom extends Room {
 
             if (this.checkInvalid(message, VerifyTypes.ARRAY, 2)) return;
 
-            if (this.hasPerms(client) || this.state.allPlayersChoose) {
-                this.state.stageName = message[0];
-                this.state.stageMod = message[1];
-                this.state.stageURL = message[2];
+            const requesterStage = this.getStatePlayer(client);
+            if (!requesterStage)
+                return;
 
-                for (const [_, player] of this.state.players) {
-                    player.isReady = false;
-                }
+            this.state.stageName = message[0];
+            this.state.stageMod = message[1];
+            this.state.stageURL = message[2];
 
-                const requester = this.getStatePlayer(client);
-                if (!requester)
-                    return;
-
-                this.broadcast("log", formatLog(requester.name + ' has picked stage: "' + this.state.stageName + '"'));
-                this.broadcast("checkStage", "", { afterNextPatch: true });
+            for (const [_, player] of this.state.players) {
+                player.isReady = false;
             }
-            else {
-                client.send('alert', 'You don\'t have a permission to do that.')
-            }
+
+            this.broadcast("log", formatLog(requesterStage.name + ' has picked stage: "' + this.state.stageName + '"'));
+            this.broadcast("checkStage", "", { afterNextPatch: true });
         });
 
         this.onMessage("verifyChart", (client, message) => {
@@ -478,17 +489,6 @@ export class GameRoom extends Room {
 
             if (this.hasPerms(client)) {
                 this.state.anarchyMode = !this.state.anarchyMode;
-            }
-            else {
-                client.send('alert', 'You don\'t have a permission to do that.')
-            }
-        });
-
-        this.onMessage("togglePlayersCanChoose", (client, _message) => {
-            this.keepAliveClient(client);
-
-            if (this.hasPerms(client)) {
-                this.state.allPlayersChoose = !this.state.allPlayersChoose;
             }
             else {
                 client.send('alert', 'You don\'t have a permission to do that.')
@@ -1271,6 +1271,16 @@ export class GameRoom extends Room {
         return true;
     }
 
+    applySongFromMessage(message: any[]) {
+        this.state.folder = message[0];
+        this.state.song = message[1];
+        this.state.diff = message[2];
+        this.chartHash = message[3];
+        this.state.modDir = message[4];
+        this.state.modURL = message[5];
+        this.state.diffList = message[6];
+    }
+
     async startGame() {
         const sideCount = [0, 0];
         for (const [_, player] of this.state.players) {
@@ -1280,8 +1290,9 @@ export class GameRoom extends Room {
             sideCount[player.bfSide ? 1 : 0]++;
         }
 
+        const maxPerSide = Math.ceil(this.maxClients / 2);
         for (const count of sideCount) {
-            if (count > this.maxClients / 2)
+            if (count > maxPerSide)
                 return;
         }
 
