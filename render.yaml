@@ -1,0 +1,24 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Connect this repo in the Render dashboard, then use "Apply render.yaml" or create a Web Service from this file.
+
+services:
+  - type: web
+    name: funkin-online-server
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/onlinecount
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Required behind Render's proxy so Express sees real client IPs (Colyseus / rate limits).
+      - key: EXPRESS_TRUST_PROXY
+        value: "true"
+      # Render injects PORT automatically — do not set PORT manually in the dashboard.
+      # Optional: enable Psych Online Network (requires MongoDB DATABASE_URL).
+      - key: NETWORK_ENABLED
+        value: "false"
+      # Set in dashboard (Render MongoDB or Atlas): mongodb://...
+      - key: DATABASE_URL
+        sync: false

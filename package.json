@@ -2,7 +2,7 @@
   "private": true,
   "name": "funkin-online-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "This is a source code of the game server and website for Psych Online.\r The code is based on the Colyseus and ExpressJS for the backend. And React for the frontend.",
   "main": "build/index.js",
   "engines": {
     "node": ">=22.0.0"
@@ -10,14 +10,16 @@
   "scripts": {
     "test": "nodemon src/index.ts",
     "start": "npm run build && pm2 start ecosystem.config.js",
+    "start:prod": "node build/index.js",
     "startnode": "npm run build && node build/index.js",
     "restart": "npm run build && pm2 restart funkin-online --update-env",
     "build": "npm run clean && tsc",
     "clean": "rimraf build",
     "haxify": "npx schema-codegen src/rooms/schema/* --haxe --output src/rooms/schema/",
     "servsetup": "node setupservice.js",
-    "postinstall": "npm install pm2 -g && npm install -g ts-node && prisma generate",
+    "postinstall": "prisma generate",
     "installclient": "cd client && npm install && npm run build && cd ..",
+    "render-build": "npm run build && npm run installclient",
     "restartclient": "cd client && npm run build && pm2 restart funkin-online --update-env && cd..",
     "setupservice": "pm2 save && pm2 startup"
   },
@@ -63,8 +65,9 @@
     "cors": "^2.8.5",
     "cross-spawn": "^7.0.6",
     "discord.js": "^14.21.0",
+    "ejs": "^5.0.2",
     "elliptic": "^6.6.1",
-    "express": "^4.21.0",
+    "express": "^4.22.1",
     "express-fileupload": "^1.5.1",
     "ip": "^2.0.1",
     "javascript-time-ago": "^2.5.10",
@@ -75,5 +78,11 @@
     "sanitize-html": "^2.13.0",
     "toml": "^3.0.0",
     "ws": "^8.18.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Snirozu/Funkin-Online-Server.git"
+  },
+  "keywords": [],
+  "type": "commonjs"
 }
